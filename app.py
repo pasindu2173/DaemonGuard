@@ -3,7 +3,7 @@ import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 from collector import get_system_telemetry
 from engine import calculate_waste_score
-from actions import kill_process
+from actions import kill_process, automated_cleanup
 
 st.set_page_config(
     page_title="DaemonGuard",
@@ -13,6 +13,10 @@ st.set_page_config(
 
 st.title("🛡️ DaemonGuard - Linux Resource Optimization Dashboard")
 st.caption("Advanced Linux Process Telemetry, Waste Scoring & Safe Optimization")
+
+# --- DATA FETCH & ENGINE (FIRST) ---
+df_raw = get_system_telemetry()
+df = calculate_waste_score(df_raw)
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("⚙️ Control Panel")
@@ -43,9 +47,22 @@ if st.sidebar.button("⚠️ Terminate Selected PID"):
         else:
             st.sidebar.error(msg)
 
-# --- DATA FETCH & ENGINE ---
-df_raw = get_system_telemetry()
-df = calculate_waste_score(df_raw)
+# --- AUTOMATED CLEANUP POLICY ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("🤖 Automated Cleanup Policy")
+auto_threshold = st.sidebar.slider("Waste Score Threshold", min_value=200, max_value=800, value=400, step=50)
+
+auto_confirm = st.sidebar.checkbox("Confirm Auto-Cleanup Execution")
+
+if st.sidebar.button("⚡ Run Automated Cleanup"):
+    if not auto_confirm:
+        st.sidebar.warning("Please check the auto-cleanup confirmation box!")
+    else:
+        cleanup_logs = automated_cleanup(df, threshold=auto_threshold)
+        st.sidebar.success(f"Cleanup executed! Processed {len(cleanup_logs)} target(s).")
+        for log in cleanup_logs:
+            st.sidebar.info(log)
+        st.rerun()
 
 # --- HIGH WASTE ALERT BANNER ---
 high_waste_df = df[df['waste_score'] > 200]
@@ -103,7 +120,6 @@ with chart_col2:
 st.markdown("---")
 st.subheader("📋 Live Process Telemetry Data")
 
-# Display Table with key columns prioritized
 display_cols = ['pid', 'name', 'cpu_percent', 'ram_mb', 'waste_score', 'risk_level', 'is_safe']
 existing_cols = [c for c in display_cols if c in df_filtered.columns]
 
