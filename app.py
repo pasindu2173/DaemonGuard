@@ -4,6 +4,7 @@ from streamlit_autorefresh import st_autorefresh
 from collector import get_system_telemetry
 from engine import calculate_waste_score
 from actions import kill_process, automated_cleanup
+from database import init_db, log_telemetry, get_historical_data
 
 st.set_page_config(
     page_title="DaemonGuard",
@@ -11,12 +12,18 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- INITIALIZE DATABASE ---
+init_db()
+
 st.title("🛡️ DaemonGuard - Linux Resource Optimization Dashboard")
 st.caption("Advanced Linux Process Telemetry, Waste Scoring & Safe Optimization")
 
-# --- DATA FETCH & ENGINE (FIRST) ---
+# --- DATA FETCH, ENGINE & DB LOGGING ---
 df_raw = get_system_telemetry()
 df = calculate_waste_score(df_raw)
+
+# Log metrics to SQLite database on each cycle
+log_telemetry(df)
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("⚙️ Control Panel")
@@ -115,6 +122,22 @@ with chart_col2:
     st.write("**Top 5 Waste Score Candidates**")
     top_waste = df_filtered.sort_values(by='waste_score', ascending=False).head(5)
     st.bar_chart(top_waste.set_index('name')['waste_score'])
+
+# --- HISTORICAL TELEMETRY SECTION (SQLITE INTEGRATION) ---
+st.markdown("---")
+st.subheader("📜 Historical Telemetry Analytics (SQLite)")
+
+df_history = get_historical_data(limit=30)
+if not df_history.empty:
+    hist_col1, hist_col2 = st.columns(2)
+    with hist_col1:
+        st.write("**Average CPU Usage Over Time (%)**")
+        st.line_chart(df_history.set_index('timestamp')['avg_cpu_percent'])
+    with hist_col2:
+        st.write("**Total RAM Usage Over Time (MB)**")
+        st.line_chart(df_history.set_index('timestamp')['total_ram_mb'])
+else:
+    st.info("Collecting historical telemetry data... Historical trends will appear shortly.")
 
 # --- TELEMETRY DATA TABLE ---
 st.markdown("---")
